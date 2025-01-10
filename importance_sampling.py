@@ -1,5 +1,6 @@
 import math, random
 from collections import deque
+import numpy as np
 
 class ImportanceSampler:
     def __init__(self, graph):
@@ -108,6 +109,11 @@ class ImportanceSampler:
             val = 1 if random.random()<p else 0
             lp = math.log(p if val==1 else (1-p))
             return val, lp
+        elif dist_type == 'poisson':
+            lam = params[0]
+            val = np.random.poisson(lam)
+            lp = -lam + val * math.log(lam) - math.lgamma(val + 1)
+            return val, lp
         else:
             raise NotImplementedError(f"Distribution {dist_type} not supported.")
 
@@ -118,6 +124,9 @@ class ImportanceSampler:
         elif dist_type == 'bernoulli':
             p = params[0]
             return math.log(p if x==1 else (1-p))
+        elif dist_type == 'poisson':
+            lam = params[0]
+            return -lam + x * math.log(lam) - math.lgamma(x + 1)
         else:
             raise NotImplementedError(f"Distribution {dist_type} not supported.")
 
