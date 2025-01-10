@@ -51,7 +51,7 @@ class For(Node):
         self.body = body            # list of AST nodes
 
     def __repr__(self):
-        return f"For({self.loop_var} in 0..{self.range_n})"
+        return f"For({self.loop_var} in 0..{self.range_n}: {self.body})"
 
 class Sample(Node):
     def __init__(self, var_name, distribution_expr):

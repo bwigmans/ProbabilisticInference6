@@ -1,5 +1,5 @@
 import re
-from ast_nodes import Constant, Variable, Let, Sample, If, For
+from ast_nodes import Constant, Variable, Let, Sample, If, For, Observe
 
 # Lexer: Tokenizing the input FOPPL program
 class FOPPLLexer:
@@ -14,7 +14,7 @@ class FOPPLLexer:
         token_patterns = [
             ('KEYWORD_LET', r'\blet\b'),  # Matches the 'let' keyword
             ('KEYWORD_SAMPLE', r'\bsample\b'),  # Matches the 'sample' keyword
-            #TODO add observe parsing
+            ('KEYWORD_OBSERVE', r'\bobserve\b'),  # Matches the 'observe' keyword
             ('KEYWORD_IF', r'\bif\b'),  # Matches the 'if' keyword
             ('KEYWORD_FOR', r'\bfor\b'),  # Matches the 'for' keyword
             ('NUMBER', r'\d+(\.\d+)?'),  # Matches numbers (integers and floats)
@@ -83,6 +83,8 @@ class FOPPLParser:
             return self.let_statement()
         elif self.current_token[0] == 'KEYWORD_SAMPLE':
             return self.sample_statement()
+        elif self.current_token[0] == 'KEYWORD_OBSERVE':
+            return self.observe_statement()
         elif self.current_token[0] == 'KEYWORD_IF':
             return self.if_statement()
         elif self.current_token[0] == 'KEYWORD_FOR':
@@ -93,21 +95,60 @@ class FOPPLParser:
             raise SyntaxError(f"Unexpected token: {self.current_token}")
 
     def let_statement(self):
-        """Parse a 'let' statement of the form (let [var value] body)."""
+        """
+        Parse a 'let' statement of the form (let [var value] body).
+        Also supports multiple (var value) pairs in a single let statement.
+        """
         self.advance()  # Skip 'let'
+        if self.current_token[0] != 'SYMBOL_LBRACKET':
+            raise SyntaxError(
+                f"Expected '[', got {self.current_token} in let statement."
+            )
         self.advance()  # Skip '['
-        var_name = self.current_token[1]
-        self.advance()  # Skip var name
-        value_expr = self.expression()
-        self.advance()  # Skip var value
-        #TODO Check closing bracket, if not there create nested let
+
+        pairs = []
+        # Collect (var, value_expr) pairs until we see ']'
+        while self.current_token[0] != 'SYMBOL_RBRACKET':
+            # Parse var name
+            if self.current_token[0] != 'IDENTIFIER':
+                raise SyntaxError(
+                    f"Expected identifier in let, got {self.current_token}"
+                )
+            var_name = self.current_token[1]
+            self.advance()  # Skip the identifier
+
+            # Parse value expression
+            saved_token = self.current_token  # Remember where we are
+            value_expr = self.expression()    # Let `expression()` produce an AST node
+                                              # but it won't call `self.advance()` if single-token
+
+            # If `expression()` did NOT advance (e.g., for a single number or identifier),
+            # then consume one token manually.
+            if self.current_token == saved_token:
+                self.advance()  # Force consumption of that single token
+
+            # Add (var, value_expr) to our list of pairs
+            pairs.append((var_name, value_expr))
+
+        # At this point, we must see 'SYMBOL_RBRACKET'
+        if self.current_token[0] != 'SYMBOL_RBRACKET':
+            raise SyntaxError(
+                f"Expected ']', got {self.current_token} in let statement."
+            )
         self.advance()  # Skip ']'
+
+        # Parse the body (the statement after [pairs])
         body_expr = self.statement()
-        return Let(var_name, value_expr, body_expr)
+
+        # Build nested Let structures: Let(var1, val1, Let(var2, val2, ... body))
+        ast = body_expr
+        for var, val in reversed(pairs):
+            ast = Let(var, val, ast)
+
+        return ast
 
     def sample_statement(self):
         """Parse a 'sample' statement of the form (sample var (distribution args))."""
-        # self.advance()  # Skip '('
         self.advance()  # Skip 'sample'
         var_name = self.current_token[1]
         self.advance()  # Skip var name
@@ -129,16 +170,27 @@ class FOPPLParser:
     #TODO test this with a simple test case
     def for_statement(self):
         """Parse a 'for' statement of the form (for [var range] body)."""
-        self.advance()  # Skip '('
+        # self.advance()  # Skip '('
         self.advance()  # Skip 'for'
         self.advance()  # Skip '['
         loop_var = self.current_token[1]
         self.advance()  # Skip loop variable
-        self.advance()  # Skip range
         range_n = self.expression()
+        self.advance()  # Skip range
         self.advance()  # Skip ']'
         body_expr = self.statement()
         return For(loop_var, range_n, body_expr)
+    
+    def observe_statement(self):
+        """Parse an 'observe' statement of the form (observe distribution variable)."""
+        self.advance()  # Skip 'observe'
+        self.advance()  # Skip '('
+        distribution_expr = self.distribution_expression()
+        self.advance()  # Skip ')'
+        observed_var = self.expression()
+        self.advance()  # Skip observed_var
+        return Observe(distribution_expr, observed_var)
+
 
     def expression(self):
         """Parse an expression (either a constant or a variable)."""
@@ -174,8 +226,7 @@ class FOPPLParser:
 # Example Usage:
 if __name__ == "__main__":
     # A simple FOPPL program (Lisp-style syntax)
-    code = """(let [x 5] (sample y (normal x 1)))
-    (let [x 3] (sample y (normal x 2)))"""
+    code = "(for [x 5] (sample x (normal 0 1)))"
     
     # Step 1: Lexical analysis (tokenization)
     lexer = FOPPLLexer(code)
@@ -186,3 +237,25 @@ if __name__ == "__main__":
 
     # Step 3: Printing the AST
     print(ast)
+
+    # print("=====TEST=====")
+    # code = "(let [a 2] (sample x (normal 0 1)))"
+    # lexer = FOPPLLexer(code)
+    # parser = FOPPLParser(lexer)
+    # ast = parser.parse()
+    # print(ast, "\n")
+
+    # print("=====TEST=====")
+    # code = "(let [x (sample x (normal 0 1))] (observe (normal x 1) 3))"
+    # lexer = FOPPLLexer(code)
+    # parser = FOPPLParser(lexer)
+    # ast = parser.parse()
+    # print(ast, "\n")
+
+    # print("=====TEST=====")
+    # code = "(let [x 2 y 3 z 4] (sample x (normal 0 1)))"
+    # lexer = FOPPLLexer(code)
+    # parser = FOPPLParser(lexer)
+    # ast = parser.parse()
+    # print(ast, "\n")
+    
