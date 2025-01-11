@@ -1,5 +1,5 @@
 import itertools
-from ast_class import Constant, Variable, Let, If, For, Sample, Observe, Assign, Node
+from ast_nodes import Constant, Variable, Let, If, For, Sample, Observe, Assign, Node
 
 
 class GraphNode:
