@@ -84,7 +84,7 @@ class Translator:
             elif isinstance(expr.range_n, Constant):
                 n = expr.range_n.value
             else:
-                raise ValueError("This toy translator expects a literal or Constant for range_n.")
+                raise ValueError("Expecting a literal or Constant for range_n.")
 
             # We'll unroll
             last_value = None
@@ -181,7 +181,7 @@ class Translator:
         or ('bernoulli', p_expr), etc.
         """
         if not isinstance(dist_expr, tuple):
-            raise ValueError("Distribution expression must be a tuple in this toy example.")
+            raise ValueError("Distribution expression must be a tuple.")
         dist_type = dist_expr[0]
         param_exprs = dist_expr[1:]
 
