@@ -7,7 +7,7 @@ class Constant(Node):
         self.value = value
 
     def __repr__(self):
-        return f"{self.value}"
+        return f"Constant({self.value})"
 
 class Variable(Node):
     def __init__(self, name):

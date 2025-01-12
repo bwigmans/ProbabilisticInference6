@@ -1,7 +1,7 @@
 import math, random
 from collections import deque
 import numpy as np
-
+from ast_nodes import Constant
 class ImportanceSampler:
     def __init__(self, graph):
         self.graph = graph
@@ -131,4 +131,11 @@ class ImportanceSampler:
             raise NotImplementedError(f"Distribution {dist_type} not supported.")
 
     def log_prob_normal(self, x, mu, sigma):
-        return -0.5*math.log(2*math.pi*sigma*sigma) - 0.5*((x-mu)/sigma)**2
+        if isinstance(x, Constant):
+            x = x.value
+        if isinstance(mu, Constant):
+            mu = mu.value
+        if isinstance(sigma, Constant):
+            sigma = sigma.value
+
+        return -0.5*math.log(2*math.pi*sigma*sigma) - 0.5*((x - mu)/sigma)**2
