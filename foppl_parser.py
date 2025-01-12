@@ -207,11 +207,14 @@ class FOPPLParser:
         """Parse a distribution expression like (normal x 1)."""
         dist_name = self.current_token[1]
         self.advance()  # Skip distribution name
-        arg1 = self.expression()
-        self.advance()  # Skip arg1
-        arg2 = self.expression()
-        self.advance() # Skip arg2
-        return (dist_name, arg1, arg2)  # Return a tuple representing the distribution
+
+        args = []
+        while self.current_token[1] != ')':
+            arg = self.expression()
+            args.append(arg)
+            self.advance()  # Skip current arg
+
+        return (dist_name, *args)
 
     def parenthesized_expression(self):
         """Handle expressions inside parentheses."""
@@ -226,7 +229,12 @@ class FOPPLParser:
 # Example Usage:
 if __name__ == "__main__":
     # A simple FOPPL program (Lisp-style syntax)
-    code = "(for [x 5] (sample x (normal 0 1)))"
+    # code = """
+    # (let [theta (sample (normal mu0 tau2))] (observe (poisson theta) y_obs) theta)
+    # """
+    code = """
+    (let [theta (sample x (normal mu0 tau2))] (observe (poisson theta) y_obs))
+    """
     
     # Step 1: Lexical analysis (tokenization)
     lexer = FOPPLLexer(code)
