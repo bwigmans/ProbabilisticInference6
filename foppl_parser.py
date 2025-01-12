@@ -19,12 +19,10 @@ class FOPPLLexer:
             ('KEYWORD_FOR', r'\bfor\b'),  # Matches the 'for' keyword
             ('NUMBER', r'\d+(\.\d+)?'),  # Matches numbers (integers and floats)
             ('IDENTIFIER', r'[a-zA-Z_][a-zA-Z_0-9]*'),  # Matches identifiers (variable names)
-            #TODO maybe add boolean
             ('SYMBOL_LPAREN', r'\('),  # Matches opening parenthesis '('
             ('SYMBOL_RPAREN', r'\)'),  # Matches closing parenthesis ')'
             ('SYMBOL_LBRACKET', r'\['),  # Matches opening square bracket '['
             ('SYMBOL_RBRACKET', r'\]'),  # Matches closing square bracket ']'
-            ('SYMBOL_COMMA', r','),  # Matches commas ','
             ('SYMBOL_ASSIGN', r'='),  # Matches equals sign '='
             ('SYMBOL_PLUS', r'\+'),  # Matches plus sign '+'
             ('WHITESPACE', r'\s+'),  # Matches whitespaces (to be ignored)
@@ -89,6 +87,10 @@ class FOPPLParser:
             return self.if_statement()
         elif self.current_token[0] == 'KEYWORD_FOR':
             return self.for_statement()
+        elif self.current_token[0] == 'IDENTIFIER':
+            return self.expression()
+        elif self.current_token[0] == 'NUMBER':
+            return self.expression()
         elif self.current_token[0] == 'SYMBOL_LPAREN':  # Handle sub-expressions in parentheses
             return self.parenthesized_expression()
         else:
@@ -167,7 +169,6 @@ class FOPPLParser:
         else_branch = self.statement()
         return If(condition, then_branch, else_branch)
 
-    #TODO test this with a simple test case
     def for_statement(self):
         """Parse a 'for' statement of the form (for [var range] body)."""
         # self.advance()  # Skip '('
@@ -190,7 +191,6 @@ class FOPPLParser:
         observed_var = self.expression()
         self.advance()  # Skip observed_var
         return Observe(distribution_expr, observed_var)
-
 
     def expression(self):
         """Parse an expression (either a constant or a variable)."""
