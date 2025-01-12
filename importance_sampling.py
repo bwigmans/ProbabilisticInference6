@@ -114,6 +114,15 @@ class ImportanceSampler:
             val = np.random.poisson(lam)
             lp = -lam + val * math.log(lam) - math.lgamma(val + 1)
             return val, lp
+        elif dist_type == 'beta':
+            alpha, beta_val = params
+            val = random.betavariate(alpha, beta_val)
+            lp = (math.lgamma(alpha + beta_val)
+                  - math.lgamma(alpha)
+                  - math.lgamma(beta_val)
+                  + (alpha - 1) * math.log(val)
+                  + (beta_val - 1) * math.log(1 - val))
+            return val, lp
         else:
             raise NotImplementedError(f"Distribution {dist_type} not supported.")
 
@@ -127,6 +136,15 @@ class ImportanceSampler:
         elif dist_type == 'poisson':
             lam = params[0]
             return -lam + x * math.log(lam) - math.lgamma(x + 1)
+        elif dist_type == 'beta':
+            alpha, beta_val = params
+            if x <= 0 or x >= 1:
+                return float('-inf')
+            return (math.lgamma(alpha + beta_val)
+                    - math.lgamma(alpha)
+                    - math.lgamma(beta_val)
+                    + (alpha - 1) * math.log(x)
+                    + (beta_val - 1) * math.log(1 - x))
         else:
             raise NotImplementedError(f"Distribution {dist_type} not supported.")
 
