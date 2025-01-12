@@ -133,6 +133,12 @@ class ImportanceSampler:
             # Log probability for the Half-Cauchy distribution
             lp = math.log(2 / (math.pi * gamma * (1 + (val / gamma) ** 2)))
             return val, lp
+
+        elif dist_type =='lognormal':
+            mu, sigma = params
+            val = np.random.lognormal(mu, sigma)
+            lp = self.log_prob_lognormal(val, mu, sigma)
+            return val, lp
             
         else:
             raise NotImplementedError(f"Distribution {dist_type} not supported.")
@@ -156,6 +162,9 @@ class ImportanceSampler:
                     - math.lgamma(beta_val)
                     + (alpha - 1) * math.log(x)
                     + (beta_val - 1) * math.log(1 - x))
+        elif dist_type == 'lognormal':
+            mu, sigma = params
+            return self.log_prob_lognormal(x, mu, sigma)
         else:
             raise NotImplementedError(f"Distribution {dist_type} not supported.")
 
@@ -167,3 +176,12 @@ class ImportanceSampler:
         if isinstance(sigma, Constant):
             sigma = sigma.value
         return -0.5*math.log(2*math.pi*sigma*sigma) - 0.5*((x - mu)/sigma)**2
+
+    def log_prob_lognormal(self, x, mu, sigma):
+        if isinstance(x, Constant):
+            x = x.value
+        if isinstance(mu, Constant):
+            mu = mu.value
+        if isinstance(sigma, Constant):
+            sigma = sigma.value
+        return -0.5*math.log(2*math.pi) -math.log(x*sigma) - 0.5*((math.log(x) - mu)/sigma)**2
