@@ -152,6 +152,8 @@ class ImportanceSampler:
             return math.log(p if x==1 else (1-p))
         elif dist_type == 'poisson':
             lam = params[0]
+            if isinstance(x, Constant):
+                x = x.value
             return -lam + x * math.log(lam) - math.lgamma(x + 1)
         elif dist_type == 'beta':
             alpha, beta_val = params
