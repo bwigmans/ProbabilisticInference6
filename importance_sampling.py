@@ -123,6 +123,17 @@ class ImportanceSampler:
                   + (alpha - 1) * math.log(val)
                   + (beta_val - 1) * math.log(1 - val))
             return val, lp
+        
+        elif dist_type =='half-cauchy':
+            gamma = params[0]
+            # Sample from the Cauchy distribution and take the absolute value to ensure positivity
+            val = np.random.standard_cauchy() * gamma
+            val = abs(val)
+            
+            # Log probability for the Half-Cauchy distribution
+            lp = math.log(2 / (math.pi * gamma * (1 + (val / gamma) ** 2)))
+            return val, lp
+            
         else:
             raise NotImplementedError(f"Distribution {dist_type} not supported.")
 
@@ -155,5 +166,4 @@ class ImportanceSampler:
             mu = mu.value
         if isinstance(sigma, Constant):
             sigma = sigma.value
-
         return -0.5*math.log(2*math.pi*sigma*sigma) - 0.5*((x - mu)/sigma)**2
