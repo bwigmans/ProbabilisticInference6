@@ -30,6 +30,8 @@ end
     return y
 end
 
+
+
 function make_constraints(ys)
     constraints = Gen.choicemap()
     for i=1:length(ys)
@@ -60,9 +62,9 @@ function block_resimulation_inference(m0, t2, ys, observations)
     return tr
 end
 
-ys = 48.0
-m0 = 50.0
-t2 = 10.0
+ys = 1.0
+m0 = 1.0
+t2 = 0.5
 scores = Vector{Float64}(undef, 10)
 for i=1:10
     @time tr = block_resimulation_inference(m0, t2, ys, observations)
