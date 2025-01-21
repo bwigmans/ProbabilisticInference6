@@ -21,7 +21,7 @@ end;
 @gen function sine_model_fancy(xs::Vector{Float64})
 
     amplitude = ({:amplitude} ~ gamma(1, 1))
-    period = ({:period} ~ gamma(1, 1))
+    period = ({:period} ~ gamma(5, 1))
     phase = ({:phase} ~ uniform(0, 2*pi))
 
     function sine(x)
@@ -31,7 +31,7 @@ end;
     for (i, x) in enumerate(xs)
         {(:y, i)} ~ normal(sine(x), noise)
     end
-    return y
+    return sine
 end;
 
 
@@ -109,3 +109,73 @@ xs_dense = collect(range(-5, stop=5, length=50));
 
 traces = [simulate(piecewise_constant, (xs_dense,)) for _ in 1:9]
 plot([visualize_trace(t) for t in traces]...)
+
+function overlay(renderer, traces; same_data=true, args...)
+    fig = renderer(traces[1], show_data=true, args...)
+    
+    xs, = get_args(traces[1])
+    xmin = minimum(xs)
+    xmax = maximum(xs)
+
+    for i=2:length(traces)
+        y = get_retval(traces[i])
+        test_xs = collect(range(-5, stop=5, length=1000))
+        fig = plot!(test_xs, map(y, test_xs), color="black", alpha=0.5, label=nothing,
+                    xlim=(xmin, xmax), ylim=(xmin, xmax))
+    end
+    return fig
+end;
+
+function render_trace(trace; show_data=true)
+    
+    # Pull out xs from the trace
+    xs, = get_args(trace)
+    
+    xmin = minimum(xs)
+    xmax = maximum(xs)
+
+    # Pull out the return value, useful for plotting
+    y = get_retval(trace)
+    
+    # Draw the line
+    test_xs = collect(range(-5, stop=5, length=1000))
+    fig = plot(test_xs, map(y, test_xs), color="black", alpha=0.5, label=nothing,
+                xlim=(xmin, xmax), ylim=(xmin, xmax))
+
+    if show_data
+        ys = [trace[(:y, i)] for i=1:length(xs)]
+        
+        # Plot the data set
+        scatter!(xs, ys, c="black", label=nothing)
+    end
+    
+    return fig
+end;
+
+function do_inference(model, xs, ys, amount_of_computation)
+    
+    # Create a choice map that maps model addresses (:y, i)
+    # to observed values ys[i]. We leave :slope and :intercept
+    # unconstrained, because we want them to be inferred.
+    observations = Gen.choicemap()
+    for (i, y) in enumerate(ys)
+        observations[(:y, i)] = y
+    end
+    
+    # Call importance_resampling to obtain a likely trace consistent
+    # with our observations.
+    (trace, _) = Gen.importance_resampling(model, (xs,), observations, amount_of_computation);
+    return trace
+end;
+
+
+xs = [-5., -4., -3., -2., -1., 0., 1., 2., 3., 4., 5.];
+ys = [6.75003, 6.1568, 4.26414, 1.84894, 3.09686, 1.94026, 1.36411, -0.83959, -0.976, -1.93363, -2.91303];
+ys_sine = [2.89, 2.22, -0.612, -0.522, -2.65, -0.133, 2.70, 2.77, 0.425, -2.11, -2.76];
+
+traces = [do_inference(combined_model, xs, ys, 10000) for _=1:12];
+linear_dataset_plot = overlay(render_trace, traces)
+traces = [do_inference(combined_model, xs, ys_sine, 10000) for _=1:12];
+sine_dataset_plot = overlay(render_trace, traces)
+
+Plots.plot(linear_dataset_plot, sine_dataset_plot)
