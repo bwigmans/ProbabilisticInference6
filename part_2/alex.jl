@@ -1,75 +1,39 @@
 using Gen
 using Distributions
 
-"""
-    multi_armed_bandit_model(alpha, beta, chosen_arms)
-
-Gen model for a Bayesian Multi-Armed Bandit using Beta-Bernoulli arms.
-
-# Arguments
-- `alpha::Vector{Float64}`: A vector of α parameters for the Beta priors (size M).
-- `beta::Vector{Float64}`: A vector of β parameters for the Beta priors (size M).
-- `chosen_arms::Vector{Int}`: The sequence of chosen arms over T trials.
-
-# Returns
-A Gen model that samples:
-1. θᵢ ~ Beta(αᵢ, βᵢ) for i=1..M
-2. rₜ ~ Bernoulli(θᵣ) depending on the arm chosen at trial t
-"""
-@gen function multi_armed_bandit_model(alpha::Vector{Float64},
-                                       beta::Vector{Float64},
-                                       chosen_arms::Vector{Int})
-    M = length(alpha)      # Number of arms
-    T = length(chosen_arms)  # Number of trials
-
-    # 1) Sample each arm's probability of reward.
-    thetas = Vector{Float64}(undef, M)
-    for i in 1:M
-        thetas[i] = @trace(beta(alpha[i], beta[i]), (:theta, i))
-    end
-
-    # 2) For each trial, we observe a reward from the chosen arm.
+@gen function multi_armed_bandit_model(
+    α::Vector{Float64},
+    β::Vector{Float64},
+    chosen_arms::Vector{Int}
+)
+    M = length(α)
+    T = length(chosen_arms)
+    
+    # Trace theta
+    θ = [@trace(beta(α[i], β[i]), (:θ, i)) for i in 1:M]
+    
+    # rewards for arms
     for t in 1:T
-        arm_t = chosen_arms[t]           # Which arm was chosen at time t
-        @trace(bernoulli(thetas[arm_t]), (:reward, t))
+        arm = chosen_arms[t]
+        @trace(bernoulli(θ[arm]), (:reward, t))
     end
+    
+    return θ  # Return just θ for clarity
 end
 
+# 1. Define hyperparameters
+α = [1.0, 1.0]  # Beta(1,1) priors for 2 arms
+β = [1.0, 1.0]
+chosen_arms = [1, 1, 1, 2] # Arm choices over 4 trials
 
-"""
-    hmm_model(pi, A, B, T)
+# 2. Generate a trace (forward simulation)
+trace = Gen.simulate(multi_armed_bandit_model, (α, β, chosen_arms))
 
-Gen model for a discrete Hidden Markov Model (HMM).
+# 3. Access theta
+M = length(α)
+sampled_θ = [trace[(:θ, i)] for i in 1:M]  # Access each arm's θ
+println("Sampled θ: ", sampled_θ)
 
-# Arguments
-- `pi::Vector{Float64}`:   Initial state distribution (size N).
-- `A::Matrix{Float64}`:    State transition matrix (N x N).
-- `B::Matrix{Float64}`:    Emission matrix (N x K). Rows sum to 1.
-- `T::Int`:                Number of time steps.
-
-# Returns
-A Gen model that samples:
-1. s₁ ~ Categorical(π)
-2. sₜ ~ Categorical(A[sₜ₋₁, :]) for t=2..T
-3. oₜ ~ Categorical(B[sₜ, :])    for t=1..T
-"""
-@gen function hmm_model(pi::Vector{Float64},
-                        A::Matrix{Float64},
-                        B::Matrix{Float64},
-                        T::Int)
-    # 1) Sample the initial hidden state.
-    s1 = @trace(categorical(pi), (:state, 1))
-
-    # 2) Sample subsequent hidden states based on transitions from A.
-    prev_state = s1
-    for t in 2:T
-        st = @trace(categorical(A[prev_state, :]), (:state, t))
-        prev_state = st
-    end
-
-    # 3) For each time step, sample an emission from the state-dependent distribution in B.
-    for t in 1:T
-        current_state = get_choices($(Gen.dotget(:state, t))).value
-        @trace(categorical(B[current_state, :]), (:obs, t))
-    end
-end
+# 4. Access rewards
+sampled_rewards = [trace[(:reward, t)] for t in 1:length(chosen_arms)]
+println("Sampled rewards: ", sampled_rewards)
