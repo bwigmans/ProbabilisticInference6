@@ -1,9 +1,9 @@
-using Pkg
-# Uncomment to install if needed:
-# Pkg.add("Gen")
-# Pkg.add("Distributions")
-# Pkg.add("StatsPlots")
-# Pkg.add("Plots")
+# using Pkg
+# # Uncomment to install if needed:
+# # Pkg.add("Gen")
+# # Pkg.add("Distributions")
+# # Pkg.add("StatsPlots")
+# # Pkg.add("Plots")
 import Random, Logging
 using Plots
 using Gen
@@ -34,9 +34,7 @@ end
 
 function make_constraints(ys)
     constraints = Gen.choicemap()
-    for i=1:length(ys)
-        constraints[:y] = ys
-    end
+    constraints[:y] = ys
     return constraints
 end;
 
@@ -44,17 +42,17 @@ function logmeanexp(scores)
     logsumexp(scores) - log(length(scores))
 end;
 
-# -------------------------------------------------------------------
-# 1D Elliptical Slice Sampler for :logtheta
-# -------------------------------------------------------------------
-"""
-    elliptical_slice_1d(tr, model, m0, t2; selection = select(:logtheta))
+# # -------------------------------------------------------------------
+# # 1D Elliptical Slice Sampler for :logtheta
+# # -------------------------------------------------------------------
+# """
+#     elliptical_slice_1d(tr, model, m0, t2; selection = select(:logtheta))
 
-Performs a single elliptical slice sampling update on the one-dimensional
-latent variable `:logtheta`. Assumes a Normal(m0, sqrt(t2)) prior.
+# Performs a single elliptical slice sampling update on the one-dimensional
+# latent variable `:logtheta`. Assumes a Normal(m0, sqrt(t2)) prior.
 
-Returns the updated trace.
-"""
+# Returns the updated trace.
+# """
 function elliptical_slice_1d(tr,
                              model,
                              m0,
@@ -119,30 +117,74 @@ function elliptical_slice_1d(tr,
     end
 end
 
-function block_resimulation_update(tr, model, (), obs)
-    # (tr, _) = mh(tr, select(:logtheta))
-    # (tr, _) = hmc(tr, select(:logtheta))
-    # tr
-end;
 
+# Define the log_poisson model
+@gen function log_poisson(m0, t2)
+    logtheta ~ normal(m0, sqrt(t2))  # Prior on logtheta
+    y ~ poisson(exp(logtheta))       # Poisson likelihood
+    return y
+end
 
-function block_resimulation_inference(m0, t2, ys, observations)
-    num_samples = 5000
-    (tr, _) = generate(poissons, (m0, t2), observations)
-    for iter=1:num_samples
-        tr = elliptical_slice_1d(tr, poissons, m0, t2)
+# Define a proposal distribution for importance sampling
+@gen function proposal(m0, t2)
+    logtheta ~ normal(m0, sqrt(t2))  # Same as the prior
+end
+
+# Parameters
+m0 = 50.0  # Prior for logtheta: log(50) ≈ 3.91
+t2 = 0.1      # Prior variance (now on log scale)
+ys = 48.0       # Observed data
+obs = Gen.choicemap((:y => ys))  # Constraints
+num_samples = 10000  # Number of samples
+
+# Function to run inference with a given sampler
+function run_inference(method, model, args, observations, num_samples)
+    traces = []
+    if method == :ess || method == :mh || method == :hmc
+        (tr, _) = generate(model, args, observations)
+        for iter=1:num_samples
+            if method == :ess
+                tr = elliptical_slice_1d(tr, model, args[1], args[2])
+            elseif method == :mh
+                (tr, _) = mh(tr, select(:logtheta))
+            elseif method == :hmc
+                (tr, _) = hmc(tr, select(:logtheta))
+            end
+            push!(traces, tr)
+        end
+    elseif method == :is
+        # Importance sampling generates a vector of traces
+        (new_traces, _) = importance_sampling(model, args, observations, proposal, args, num_samples)
+        # Append each trace to the traces array
+        for tr in new_traces
+            push!(traces, tr)
+        end
     end
-
-    return tr
+    return traces
 end
 
-ys = 48.0
-m0 = 50.0
-t2 = 10.0
-obs = make_constraints(ys)
-scores = Vector{Float64}(undef, 10)
-for i=1:10
-    @time tr = block_resimulation_inference(m0, t2, ys, obs)
-    scores[i] = get_score(tr)
+# Run inference for each method
+# methods = [:ess, :mh, :is, :hmc]
+methods = [:ess, :mh, :hmc, :is]
+results = Dict()
+for method in methods
+    println("Running $method...")
+    @time traces = run_inference(method, poissons, (m0, t2), obs, num_samples)
+    results[method] = traces
 end
-println("Log probability: ", logmeanexp(scores))
+
+# Plot trace plots for comparison
+plt = plot(layout=(2, 2), size=(800, 600))
+for (i, method) in enumerate(methods)
+    # Extract logtheta values from each trace
+    logtheta_samples = [get_choices(tr)[:logtheta] for tr in results[method]]
+    # Plot the trace
+    plot!(plt[i], logtheta_samples, xlabel="Iteration", ylabel="logtheta", label=string(method), title=string(method))
+end
+display(plt)
+
+# Compare log probability estimates
+for method in methods
+    scores = [get_score(tr) for tr in results[method]]
+    println("Log probability ($method): ", logmeanexp(scores))
+end
