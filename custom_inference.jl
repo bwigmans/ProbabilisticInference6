@@ -444,32 +444,275 @@
 # main()
 
 
-using Gen, Distributions, Plots, StatsPlots, Statistics, Distributions, LinearAlgebra
 
-# Define the linear_regression_model
-@gen function linear_regression_model(X, N, K, sigma_alpha2, mu_beta, sigma_beta2, lambda_sigma)
-    alpha ~ normal(0, sqrt(sigma_alpha2))  # Intercept
-    beta1 ~ normal(mu_beta, sqrt(sigma_beta2))  # Regression coefficient 1
-    beta2 ~ normal(mu_beta, sqrt(sigma_beta2))  # Regression coefficient 2
-    beta3 ~ normal(mu_beta, sqrt(sigma_beta2))  # Regression coefficient 3
+# # Define the linear_regression_model
+# @gen function linear_regression_model(X, N, K, sigma_alpha2, mu_beta, sigma_beta2, lambda_sigma)
+#     alpha ~ normal(0, sqrt(sigma_alpha2))  # Intercept
+#     beta1 ~ normal(mu_beta, sqrt(sigma_beta2))  # Regression coefficient 1
+#     beta2 ~ normal(mu_beta, sqrt(sigma_beta2))  # Regression coefficient 2
+#     beta3 ~ normal(mu_beta, sqrt(sigma_beta2))  # Regression coefficient 3
 
-    nu ~ gamma(2, 10)
-    sigma ~ exponential(lambda_sigma)
+#     nu ~ gamma(2, 10)
+#     sigma ~ exponential(lambda_sigma)
 
-    for i in 1:N
-        mu_i = alpha + X[i, 1] * beta1 + X[i, 2] * beta2 + X[i, 3] * beta3
-        {(:y, i)} ~ normal(mu_i, sigma)
+#     for i in 1:N
+#         mu_i = alpha + X[i, 1] * beta1 + X[i, 2] * beta2 + X[i, 3] * beta3
+#         {(:y, i)} ~ normal(mu_i, sigma)
+#     end
+# end
+
+# @gen function proposal()
+#     # Sample alpha and beta from a proposal distribution
+#     alpha ~ normal(0, 1)  # Proposal for alpha
+#     beta = [{(:beta, i)} ~ normal(0, 1) for i in 1:3]  # Proposal for beta
+#     return (alpha, beta)  # Return the proposed values
+# end
+
+# # Generalized Elliptical Slice Sampling (ESS)
+# function elliptical_slice_sampling(tr, model, args, observations, addresses, prior_dict)
+#     # Current parameter value(s) for the selected addresses
+#     current_values = [get_choices(tr)[addr] for addr in addresses]
+
+#     # Extract prior mean (m0) and variance (t2) for each selected address
+#     prior_means = []
+#     prior_vars = []
+#     for addr in addresses
+#         # Get the prior distribution for the selected address
+#         prior_dist = prior_dict[addr]
+#         # Extract mean and variance from the prior distribution
+#         if prior_dist isa Normal
+#             push!(prior_means, prior_dist.μ)
+#             push!(prior_vars, prior_dist.σ^2)
+#         else
+#             error("Prior distribution for $addr is not Normal. ESS requires Normal priors.")
+#         end
+#     end
+
+#     # Standard deviations for the priors
+#     prior_stds = sqrt.(prior_vars)
+
+#     # Center the current values so the priors are ~N(0, prior_std^2)
+#     current_values_offset = current_values .- prior_means
+
+#     # Sample a random "direction" from the same priors: N(0, prior_std^2)
+#     nu = prior_stds .* randn(length(current_values))
+
+#     # Current log probability (includes prior + likelihood)
+#     logp_cur = Gen.get_score(tr)
+
+#     # Slice threshold: uniformly pick a threshold below logp_cur
+#     logy = logp_cur + log(rand())
+
+#     # Draw an initial angle
+#     theta = 2π * rand()
+#     # Bracket is [theta - 2π, theta]
+#     theta_min = theta - 2π
+#     theta_max = theta
+
+#     # Elliptical slice loop
+#     while true
+#         # Proposed offset via "rotation"
+#         proposed_offset = current_values_offset .* cos(theta) + nu .* sin(theta)
+#         # Shift back by prior means
+#         proposed_values = prior_means .+ proposed_offset
+
+#         # Create a ChoiceMap with the proposed values
+#         temp_cm = Gen.choicemap()
+#         for (i, addr) in enumerate(addresses)
+#             temp_cm[addr] = proposed_values[i]
+#         end
+
+#         # Attempt to update the trace with the new values
+#         (temp_tr, _, re_score) = Gen.update(tr, args, (), temp_cm)
+
+#         # Ensure re_score is a numeric type
+#         re_score = Float64(Gen.get_score(temp_tr))
+
+#         if re_score > logy
+#             # Accept the proposal
+#             return temp_tr
+#         else
+#             # Shrink the bracket
+#             if theta < 0
+#                 theta_min = theta
+#             else
+#                 theta_max = theta
+#             end
+#             # Sample a new angle within the bracket
+#             theta = rand() * (theta_max - theta_min) + theta_min
+#         end
+#     end
+# end
+
+# # Function to compute log likelihood
+# function compute_log_likelihood(traces)
+#     log_likelihoods = [get_score(tr) for tr in traces]
+#     mean_log_likelihood = logmeanexp(log_likelihoods)
+#     return mean_log_likelihood
+# end
+
+# # # Function to run inference
+# # function run_inference(method, model, args, observations, addresses, prior_dict, num_samples)
+# #     traces = []
+# #     (tr, _) = generate(model, args, observations)
+# #     for iter=1:num_samples
+# #         if method == :ess
+# #             tr = elliptical_slice_sampling(tr, model, args, observations, addresses, prior_dict)
+# #         elseif method == :is
+# #             # Importance sampling generates a vector of traces
+# #             (new_traces, _) = importance_sampling(model, args, observations, proposal, (), num_samples)
+# #             # Append each trace to the traces array
+# #             for tr in new_traces
+# #                 push!(traces, tr)
+# #             end
+# #         elseif method == :mh
+# #             (tr, _) = mh(tr, select(addresses...))
+# #         elseif method == :hmc
+# #             (tr, _) = hmc(tr, select(addresses...))
+# #         end
+# #         push!(traces, tr)
+# #     end
+# #     return traces
+# # end
+
+# function run_inference(method, model, args, observations, addresses, prior_dict, num_samples)
+#     traces = []
+#     if method == :ess || method == :mh || method == :hmc
+#         (tr, _) = generate(model, args, observations)
+#         for iter=1:num_samples
+#             if method == :ess
+#                 tr = elliptical_slice_sampling(tr, model, args, observations, addresses, prior_dict)
+#             elseif method == :mh
+#                 (tr, _) = mh(tr, select(addresses...))
+#             elseif method == :hmc
+#                 (tr, _) = hmc(tr, select(addresses...))
+#             end
+#             push!(traces, tr)
+#         end
+#     elseif method == :is
+#         # Importance sampling generates a vector of traces
+#         (new_traces, _) = importance_sampling(model, args, observations, proposal, (), num_samples)
+#         # Append each trace to the traces array
+#         for tr in new_traces
+#             push!(traces, tr)
+#         end
+#     end
+#     return traces
+# end
+
+# function logmeanexp(scores)
+#     logsumexp(scores) - log(length(scores))
+# end;
+
+# # Example usage
+# function main()
+#     # Define the model arguments
+#     N = 100  # Number of data points
+#     K = 3    # Number of predictors
+#     X = rand(N, K)  # Design matrix
+#     sigma_alpha2 = 1.0  # Prior variance for alpha
+#     mu_beta = 0.0       # Prior mean for beta
+#     sigma_beta2 = 1.0   # Prior variance for beta
+#     lambda_sigma = 1.0  # Rate parameter for sigma
+
+#     args = (X, N, K, sigma_alpha2, mu_beta, sigma_beta2, lambda_sigma)
+
+#     # Define the observations (constraints)
+#     ys = rand(N)  # Simulated y values
+#     observations = Gen.choicemap()
+#     for (i, y) in enumerate(ys)
+#         observations[(:y, i)] = y
+#     end
+
+#     # Define the addresses of variables to update
+#     addresses = [:alpha, :beta1, :beta2, :beta3]
+
+#     # Define the prior dictionary using addresses as keys
+#     prior_dict = Dict(
+#         :alpha => Normal(0, sqrt(sigma_alpha2)),
+#         :beta1 => Normal(mu_beta, sqrt(sigma_beta2)),
+#         :beta2 => Normal(mu_beta, sqrt(sigma_beta2)),
+#         :beta3 => Normal(mu_beta, sqrt(sigma_beta2))
+#     )
+
+#     # Run inference for all methods
+#     methods = [:hmc, :ess]
+#     results = Dict()
+#     for method in methods
+#         println("Running $method...")
+#         @time traces = run_inference(method, linear_regression_model, args, observations, addresses, prior_dict, 1000)
+#         results[method] = traces
+#     end
+
+#     # Compare log likelihood
+#     for method in methods
+#         mean_log_likelihood = compute_log_likelihood(results[method])
+#         println("Log Likelihood ($method): ", mean_log_likelihood)
+#     end
+
+#     # Plot traces for alpha
+#     plt = plot(layout=(2, 2), size=(800, 600))
+#     for (i, method) in enumerate(methods)
+#         alpha_samples = [get_choices(tr)[:alpha] for tr in results[method]]
+#         plot!(plt[i], alpha_samples, xlabel="Iteration", ylabel="alpha", label=string(method), title=string(method))
+#     end
+#     display(plt)
+# end
+
+# # Run the main function
+# main()
+ using Gen, Distributions, Plots, StatsPlots, Statistics, Distributions, LinearAlgebra
+ using MCMCChains: ess
+
+
+@gen function sine_model_fancy_transformed(xs::Vector{Float64})
+    # Sample Gaussian variables
+    z_amplitude ~ normal(0, 1)  # Gaussian variable for amplitude
+    z_period ~ normal(0, 1)     # Gaussian variable for period
+    z_phase ~ normal(0, 1)      # Gaussian variable for phase
+    z_noise ~ normal(0, 1)      # Gaussian variable for noise
+
+    # Transform Gaussian variables to desired distributions
+    amplitude = quantile(Gamma(1, 1), cdf(Normal(0, 1), z_amplitude))  # Transform to Gamma(1, 1)
+    period = quantile(Gamma(5, 1), cdf(Normal(0, 1), z_period))        # Transform to Gamma(5, 1)
+    phase = quantile(Uniform(0, 2π), cdf(Normal(0, 1), z_phase))       # Transform to Uniform(0, 2π)
+    noise = quantile(Gamma(1, 1), cdf(Normal(0, 1), z_noise))          # Transform to Gamma(1, 1)
+
+    function sine(x)
+        return amplitude * sin(((2*pi*x)/period) + phase)
+    end
+
+    for (i, x) in enumerate(xs)
+        {(:y, i)} ~ normal(sine(x), noise)
+    end
+    return sine
+end
+
+@gen function line_model_fancy(xs::Vector{Float64})
+    slope = ({:slope} ~ normal(0, 1))
+    intercept = ({:intercept} ~ normal(0, 2))
+    
+    function y(x)
+        return slope * x + intercept
+    end
+    
+    noise = ({:noise} ~ gamma(1, 1))
+    for (i, x) in enumerate(xs)
+        {(:y, i)} ~ normal(slope * x + intercept, noise)
+    end
+    return y
+end;
+
+@gen function combined_model_transformed(xs::Vector{Float64})
+    if ({:is_line} ~ bernoulli(0.5))
+        # Call line_model_fancy on xs
+        return ({*} ~ line_model_fancy(xs))
+    else
+        # Call sine_model_fancy_transformed on xs
+        return ({*} ~ sine_model_fancy_transformed(xs))
     end
 end
 
-@gen function proposal()
-    # Sample alpha and beta from a proposal distribution
-    alpha ~ normal(0, 1)  # Proposal for alpha
-    beta = [{(:beta, i)} ~ normal(0, 1) for i in 1:3]  # Proposal for beta
-    return (alpha, beta)  # Return the proposed values
-end
-
-# Generalized Elliptical Slice Sampling (ESS)
 function elliptical_slice_sampling(tr, model, args, observations, addresses, prior_dict)
     # Current parameter value(s) for the selected addresses
     current_values = [get_choices(tr)[addr] for addr in addresses]
@@ -545,120 +788,125 @@ function elliptical_slice_sampling(tr, model, args, observations, addresses, pri
     end
 end
 
-# Function to compute log likelihood
-function compute_log_likelihood(traces)
-    log_likelihoods = [get_score(tr) for tr in traces]
-    mean_log_likelihood = logmeanexp(log_likelihoods)
-    return mean_log_likelihood
-end
-
-# # Function to run inference
-# function run_inference(method, model, args, observations, addresses, prior_dict, num_samples)
-#     traces = []
-#     (tr, _) = generate(model, args, observations)
-#     for iter=1:num_samples
-#         if method == :ess
-#             tr = elliptical_slice_sampling(tr, model, args, observations, addresses, prior_dict)
-#         elseif method == :is
-#             # Importance sampling generates a vector of traces
-#             (new_traces, _) = importance_sampling(model, args, observations, proposal, (), num_samples)
-#             # Append each trace to the traces array
-#             for tr in new_traces
-#                 push!(traces, tr)
-#             end
-#         elseif method == :mh
-#             (tr, _) = mh(tr, select(addresses...))
-#         elseif method == :hmc
-#             (tr, _) = hmc(tr, select(addresses...))
-#         end
-#         push!(traces, tr)
-#     end
-#     return traces
-# end
+function logmeanexp(scores)
+    logsumexp(scores) - log(length(scores))
+end;
 
 function run_inference(method, model, args, observations, addresses, prior_dict, num_samples)
     traces = []
-    if method == :ess || method == :mh || method == :hmc
+    if method == :is
+        (traces, _) = importance_sampling(model, args, observations, num_samples)
+    else
+        # MCMC methods: run iteratively
         (tr, _) = generate(model, args, observations)
-        for iter=1:num_samples
+        for iter = 1:num_samples
             if method == :ess
-                tr = elliptical_slice_sampling(tr, model, args, observations, addresses, prior_dict)
+                if get_choices(tr)[:is_line]
+                    tr = elliptical_slice_sampling(tr, model, args, observations, addresses[:line], prior_dict)
+                else
+                    tr = elliptical_slice_sampling(tr, model, args, observations, addresses[:sine], prior_dict)
+                end
             elseif method == :mh
-                (tr, _) = mh(tr, select(addresses...))
-            elseif method == :hmc
-                (tr, _) = hmc(tr, select(addresses...))
+                if get_choices(tr)[:is_line]
+                    (tr, _) = mh(tr, select(addresses[:line]...))
+                else
+                    (tr, _) = mh(tr, select(addresses[:sine]...))
+                end
             end
-            push!(traces, tr)
-        end
-    elseif method == :is
-        # Importance sampling generates a vector of traces
-        (new_traces, _) = importance_sampling(model, args, observations, proposal, (), num_samples)
-        # Append each trace to the traces array
-        for tr in new_traces
             push!(traces, tr)
         end
     end
     return traces
 end
 
-function logmeanexp(scores)
-    logsumexp(scores) - log(length(scores))
-end;
 
-# Example usage
 function main()
-    # Define the model arguments
-    N = 100  # Number of data points
-    K = 3    # Number of predictors
-    X = rand(N, K)  # Design matrix
-    sigma_alpha2 = 1.0  # Prior variance for alpha
-    mu_beta = 0.0       # Prior mean for beta
-    sigma_beta2 = 1.0   # Prior variance for beta
-    lambda_sigma = 1.0  # Rate parameter for sigma
 
-    args = (X, N, K, sigma_alpha2, mu_beta, sigma_beta2, lambda_sigma)
+    # Define the input data
+    xs = collect(range(0, stop=10, length=100))
+
+    # Define the model arguments
+    args = (xs,)
 
     # Define the observations (constraints)
-    ys = rand(N)  # Simulated y values
+    ys = rand(100)  # Simulated y values
     observations = Gen.choicemap()
     for (i, y) in enumerate(ys)
         observations[(:y, i)] = y
     end
+    observations[:is_line] = 1
 
     # Define the addresses of variables to update
-    addresses = [:alpha, :beta1, :beta2, :beta3]
-
-    # Define the prior dictionary using addresses as keys
-    prior_dict = Dict(
-        :alpha => Normal(0, sqrt(sigma_alpha2)),
-        :beta1 => Normal(mu_beta, sqrt(sigma_beta2)),
-        :beta2 => Normal(mu_beta, sqrt(sigma_beta2)),
-        :beta3 => Normal(mu_beta, sqrt(sigma_beta2))
+    addresses = Dict(
+        :line => [:slope, :intercept],  # Addresses for line_model_fancy
+        :sine => [:z_amplitude, :z_period, :z_phase, :z_noise]  # Addresses for sine_model_fancy_transformed
     )
 
-    # Run inference for all methods
-    methods = [:hmc, :ess]
+    # Define the prior dictionary
+    prior_dict = Dict(
+        :slope => Normal(0, 1),          # Prior for slope
+        :intercept => Normal(0, 2),      # Prior for intercept
+        :z_amplitude => Normal(0, 1),    # Prior for z_amplitude
+        :z_period => Normal(0, 1),       # Prior for z_period
+        :z_phase => Normal(0, 1),        # Prior for z_phase
+        :z_noise => Normal(0, 1)         # Prior for z_noise
+    )
+
+    # Run inference
+    num_samples = 1000
+    methods = [:ess, :mh, :is]
     results = Dict()
     for method in methods
         println("Running $method...")
-        @time traces = run_inference(method, linear_regression_model, args, observations, addresses, prior_dict, 1000)
+        @time traces = run_inference(method, combined_model_transformed, args, observations, addresses, prior_dict, num_samples)
         results[method] = traces
     end
 
-    # Compare log likelihood
+    # Compare log probability estimates
     for method in methods
-        mean_log_likelihood = compute_log_likelihood(results[method])
-        println("Log Likelihood ($method): ", mean_log_likelihood)
+        scores = [get_score(tr) for tr in results[method]]
+        println("Log probability ($method): ", logmeanexp(scores))
     end
 
-    # Plot traces for alpha
-    plt = plot(layout=(2, 2), size=(800, 600))
-    for (i, method) in enumerate(methods)
-        alpha_samples = [get_choices(tr)[:alpha] for tr in results[method]]
-        plot!(plt[i], alpha_samples, xlabel="Iteration", ylabel="alpha", label=string(method), title=string(method))
+    # Compute Effective Sample Size (ESS)
+    for method in methods
+        # Extract :slope values from each trace (or any other parameter of interest)
+        slope_samples = Float64[get_choices(tr)[:slope] for tr in results[method] if has_value(get_choices(tr), :slope)]
+        # Compute ESS
+        ess_value = ess(slope_samples)
+        println("Effective Sample Size ($method): ", ess_value)
     end
+
+    # Generate predictions for a single trace
+    function generate_predictions(tr, xs)
+        if has_value(get_choices(tr), :slope)
+            # Line mode
+            slope = get_choices(tr)[:slope]
+            intercept = get_choices(tr)[:intercept]
+            noise = get_choices(tr)[:noise]
+            return slope .* xs .+ intercept .+ rand(Normal(0, noise), length(xs))
+        else
+            # Sine mode
+            amplitude = quantile(Gamma(1, 1), cdf(Normal(0, 1), get_choices(tr)[:z_amplitude]))
+            period = quantile(Gamma(5, 1), cdf(Normal(0, 1), get_choices(tr)[:z_period]))
+            phase = quantile(Uniform(0, 2π), cdf(Normal(0, 1), get_choices(tr)[:z_phase]))
+            noise = quantile(Gamma(1, 1), cdf(Normal(0, 1), get_choices(tr)[:z_noise]))
+            return amplitude .* sin.((2π .* xs) ./ period .+ phase) .+ rand(Normal(0, noise), length(xs))
+        end
+    end
+
+    # Plot observed vs predicted data
+    plt = plot()
+    for method in methods
+        # Generate predictions for the first trace (or average over multiple traces)
+        predictions = generate_predictions(results[method][1], xs)
+        plot!(plt, xs, predictions, label=string(method), alpha=0.5)
+    end
+    # Plot observed data
+    scatter!(plt, xs, ys, label="Observed Data", color=:black)
     display(plt)
 end
+
 
 # Run the main function
 main()
