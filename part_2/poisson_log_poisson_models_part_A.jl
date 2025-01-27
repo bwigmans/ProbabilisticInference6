@@ -31,7 +31,6 @@ end
 end
 
 
-
 function make_constraints(ys)
     constraints = Gen.choicemap()
     constraints[:y] = ys
@@ -42,17 +41,7 @@ function logmeanexp(scores)
     logsumexp(scores) - log(length(scores))
 end;
 
-# # -------------------------------------------------------------------
-# # 1D Elliptical Slice Sampler for :logtheta
-# # -------------------------------------------------------------------
-# """
-#     elliptical_slice_1d(tr, model, m0, t2; selection = select(:logtheta))
 
-# Performs a single elliptical slice sampling update on the one-dimensional
-# latent variable `:logtheta`. Assumes a Normal(m0, sqrt(t2)) prior.
-
-# Returns the updated trace.
-# """
 function elliptical_slice_1d(tr,
                              model,
                              m0,
@@ -131,11 +120,11 @@ end
 end
 
 # Parameters
-m0 = 50.0  # Prior for logtheta: log(50) ≈ 3.91
-t2 = 0.1      # Prior variance (now on log scale)
-ys = 48.0       # Observed data
+m0 = log(50.0)  # Prior for logtheta: log(50) ≈ 3.91
+t2 = 1.0      # Prior variance (now on log scale)
+ys = 60.0       # Observed data
 obs = Gen.choicemap((:y => ys))  # Constraints
-num_samples = 10000  # Number of samples
+num_samples = 20000  # Number of samples
 
 # Function to run inference with a given sampler
 function run_inference(method, model, args, observations, num_samples)
@@ -169,7 +158,7 @@ methods = [:ess, :mh, :hmc, :is]
 results = Dict()
 for method in methods
     println("Running $method...")
-    @time traces = run_inference(method, poissons, (m0, t2), obs, num_samples)
+    @time traces = run_inference(method, log_poisson, (m0, t2), obs, num_samples) #Change log_poisson => poissons to switch models
     results[method] = traces
 end
 
@@ -179,6 +168,7 @@ for (i, method) in enumerate(methods)
     # Extract logtheta values from each trace
     logtheta_samples = [get_choices(tr)[:logtheta] for tr in results[method]]
     # Plot the trace
+    # density!(plt[i], logtheta_samples, xlabel="logtheta", ylabel="density", label=string(method), title=string(method))
     plot!(plt[i], logtheta_samples, xlabel="Iteration", ylabel="logtheta", label=string(method), title=string(method))
 end
 display(plt)
